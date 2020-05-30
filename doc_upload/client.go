@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 )
@@ -30,11 +31,15 @@ func sendRequest(serverIP string, serverPort string) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
+	countGoRoutines()
 	go clientReceiver(conn, wg)
 	go clientSender(conn, wg)
+	countGoRoutines()
 
 	wg.Wait()
 	conn.Close()
+	countGoRoutines()
+	fmt.Println("Client closing connection")
 }
 
 func clientSender(conn net.Conn, wg sync.WaitGroup) {
@@ -42,13 +47,18 @@ func clientSender(conn net.Conn, wg sync.WaitGroup) {
 
 	for {
 		reader := bufio.NewReader(os.Stdin)
-		txt, _ := reader.ReadString('\n')
-		// fmt.Print("C_You: ")
-		fmt.Fprintf(conn, txt)
+		txt, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("Connection issue.. exiting")
+			return
+		}
+
+		if len(strings.TrimSpace(txt)) > 0 {
+			fmt.Fprintf(conn, txt+"\n")
+		}
 
 		if strings.TrimSpace(string(txt)) == "STOP" {
 			fmt.Println("Client exiting...")
-			fmt.Fprintf(conn, txt)
 			return
 		}
 	}
@@ -56,14 +66,23 @@ func clientSender(conn net.Conn, wg sync.WaitGroup) {
 
 func clientReceiver(conn net.Conn, wg sync.WaitGroup) {
 	defer wg.Done()
-
 	for {
-		message, _ := bufio.NewReader(conn).ReadString('\n')
-		fmt.Print("C_Him: ", message)
+		message, err := bufio.NewReader(conn).ReadString('\n')
+		if err != nil {
+			fmt.Println("Connection closed from server.. exiting")
+			return
+		}
+
+		fmt.Print(">>>: ", message)
+		countGoRoutines()
 
 		if strings.TrimSpace(string(message)) == "STOP" {
 			fmt.Println("Exiting... Server closed connection")
 			return
 		}
 	}
+}
+
+func countGoRoutines() {
+	fmt.Printf("Number of go goRoutines: %d\n", runtime.NumGoroutine())
 }
