@@ -48,24 +48,26 @@ func startServer(serverip string, serverPort string) {
 }
 
 func handleRequest(conn net.Conn) {
-	var wg sync.WaitGroup
-	wg.Add(1)
+	fmt.Println("Server: Received new connection")
+	waitGroup := sync.WaitGroup{}
 
 	countGoRoutines()
-	go serverReceiver(conn, wg)
-	go serverSender(conn, wg)
+	waitGroup.Add(1)
+	go serverReceiver(conn, &waitGroup)
+	go serverSender(conn, &waitGroup)
 	countGoRoutines()
 
-	wg.Wait()
+	waitGroup.Wait()
 	conn.Close()
 	countGoRoutines()
 	fmt.Println("Server: Successfully handled one request")
 }
 
-func serverReceiver(conn net.Conn, wg sync.WaitGroup) {
+func serverReceiver(conn net.Conn, wg *sync.WaitGroup) {
 	defer wg.Done()
+	var isConnected = true
 
-	for {
+	for isConnected {
 		message, err := bufio.NewReader(conn).ReadString('\n')
 		if err != nil {
 			fmt.Println("Error reading: ", err.Error())
@@ -75,16 +77,17 @@ func serverReceiver(conn net.Conn, wg sync.WaitGroup) {
 
 		if strings.TrimSpace(string(message)) == "STOP" {
 			fmt.Println("Closing connection.. Received STOP from client")
-			return
+			isConnected = false
 		}
 	}
 }
 
-func serverSender(conn net.Conn, wg sync.WaitGroup) {
+func serverSender(conn net.Conn, wg *sync.WaitGroup) {
 	// defer sendStopMessage(conn)
 	defer wg.Done()
+	var isConnected = true
 
-	for {
+	for isConnected {
 		reader := bufio.NewReader(os.Stdin)
 		txt, _ := reader.ReadString('\n')
 		fmt.Fprintf(conn, txt)
@@ -92,7 +95,7 @@ func serverSender(conn net.Conn, wg sync.WaitGroup) {
 
 		if strings.TrimSpace(string(txt)) == "STOP" {
 			fmt.Println("Server closing connection.. Sending STOP to client")
-			return
+			isConnected = false
 		}
 	}
 }

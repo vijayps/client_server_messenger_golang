@@ -28,21 +28,21 @@ func sendRequest(serverIP string, serverPort string) {
 		os.Exit(1)
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	waitGroup := sync.WaitGroup{}
 
 	countGoRoutines()
-	go clientReceiver(conn, wg)
-	go clientSender(conn, wg)
+	waitGroup.Add(1)
+	go clientReceiver(conn, &waitGroup)
+	go clientSender(conn, &waitGroup)
 	countGoRoutines()
 
-	wg.Wait()
+	waitGroup.Wait()
 	conn.Close()
 	countGoRoutines()
 	fmt.Println("Client closing connection")
 }
 
-func clientSender(conn net.Conn, wg sync.WaitGroup) {
+func clientSender(conn net.Conn, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for {
@@ -64,12 +64,12 @@ func clientSender(conn net.Conn, wg sync.WaitGroup) {
 	}
 }
 
-func clientReceiver(conn net.Conn, wg sync.WaitGroup) {
+func clientReceiver(conn net.Conn, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
 		message, err := bufio.NewReader(conn).ReadString('\n')
 		if err != nil {
-			fmt.Println("Connection closed from server.. exiting")
+			fmt.Println("Connection closed with server.. exiting")
 			return
 		}
 
