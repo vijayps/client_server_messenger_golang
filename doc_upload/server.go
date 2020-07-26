@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -33,6 +34,7 @@ func startServer(serverip string, serverPort string) {
 		fmt.Println("Error listening: ", err.Error())
 		os.Exit(1)
 	}
+
 	// Close listener when application closes
 	defer listener.Close()
 	fmt.Println("listening on " + serverip + ":" + serverPort)
@@ -43,6 +45,7 @@ func startServer(serverip string, serverPort string) {
 			fmt.Println("Error accepting connection request: ", err.Error())
 			// os.Exit(1)
 		}
+		fmt.Println("New goRoutines added")
 		go handleRequest(connection)
 	}
 }
@@ -50,59 +53,72 @@ func startServer(serverip string, serverPort string) {
 func handleRequest(conn net.Conn) {
 	fmt.Println("Server: Received new connection")
 	waitGroup := sync.WaitGroup{}
+	ctx, cancel := context.WithCancel(context.Background())
 
 	countGoRoutines()
 	waitGroup.Add(1)
-	go serverReceiver(conn, &waitGroup)
-	go serverSender(conn, &waitGroup)
+	go serverReceiver(ctx, &waitGroup, conn)
+	fmt.Println("New goRoutines added")
+
+	waitGroup.Add(1)
+	go serverSender(ctx, &waitGroup, conn)
+	fmt.Println("New goRoutines added")
 	countGoRoutines()
 
 	waitGroup.Wait()
+	cancel()
 	conn.Close()
 	countGoRoutines()
 	fmt.Println("Server: Successfully handled one request")
 }
 
-func serverReceiver(conn net.Conn, wg *sync.WaitGroup) {
+func serverReceiver(ctx context.Context, wg *sync.WaitGroup, conn net.Conn) {
 	defer wg.Done()
-	var isConnected = true
 
-	for isConnected {
-		message, err := bufio.NewReader(conn).ReadString('\n')
-		if err != nil {
-			fmt.Println("Error reading: ", err.Error())
-			continue
-		}
-		fmt.Printf(">>: %s", message)
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Print("Received exit signal")
+			return
 
-		if strings.TrimSpace(string(message)) == "STOP" {
-			fmt.Println("Closing connection.. Received STOP from client")
-			isConnected = false
+		default:
+			message, err := bufio.NewReader(conn).ReadString('\n')
+			if err != nil {
+				fmt.Println("Error reading: ", err.Error())
+				continue
+			}
+			fmt.Printf(">>: %s", message)
+
+			if strings.TrimSpace(string(message)) == "STOP" {
+				fmt.Println("Closing connection.. Received STOP from client")
+				return
+			}
 		}
 	}
 }
 
-func serverSender(conn net.Conn, wg *sync.WaitGroup) {
-	// defer sendStopMessage(conn)
+func serverSender(ctx context.Context, wg *sync.WaitGroup, conn net.Conn) {
 	defer wg.Done()
-	var isConnected = true
 
-	for isConnected {
-		reader := bufio.NewReader(os.Stdin)
-		txt, _ := reader.ReadString('\n')
-		fmt.Fprintf(conn, txt)
-		countGoRoutines()
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Println("Received exit signal")
+			return
 
-		if strings.TrimSpace(string(txt)) == "STOP" {
-			fmt.Println("Server closing connection.. Sending STOP to client")
-			isConnected = false
+		default:
+			reader := bufio.NewReader(os.Stdin)
+			txt, _ := reader.ReadString('\n')
+			fmt.Fprintf(conn, txt)
+			countGoRoutines()
+
+			if strings.TrimSpace(string(txt)) == "STOP" {
+				fmt.Println("Server closing connection.. Sending STOP to client")
+				return
+			}
 		}
 	}
 }
-
-// func sendStopMessage(conn net.Conn) {
-// 	fmt.Fprintf(conn, "STOP")
-// }
 
 func countGoRoutines() {
 	fmt.Printf("Number of go goRoutines: %d\n", runtime.NumGoroutine())

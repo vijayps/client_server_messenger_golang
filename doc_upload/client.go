@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -18,10 +19,11 @@ func main() {
 		os.Exit(0)
 	}
 
-	sendRequest(args[0], args[1])
+	initConnection(args[0], args[1])
+	countGoRoutines()
 }
 
-func sendRequest(serverIP string, serverPort string) {
+func initConnection(serverIP string, serverPort string) {
 	conn, err := net.Dial("tcp", serverIP+":"+serverPort)
 	if err != nil {
 		fmt.Println("Problem connecting server at ", serverIP, serverPort, err.Error())
@@ -29,56 +31,74 @@ func sendRequest(serverIP string, serverPort string) {
 	}
 
 	waitGroup := sync.WaitGroup{}
+	ctx, cancel := context.WithCancel(context.Background())
 
 	countGoRoutines()
 	waitGroup.Add(1)
-	go clientReceiver(conn, &waitGroup)
-	go clientSender(conn, &waitGroup)
+	go clientReceiver(ctx, &waitGroup, conn)
+
+	waitGroup.Add(1)
+	go clientSender(ctx, &waitGroup, conn)
 	countGoRoutines()
 
 	waitGroup.Wait()
+	cancel()
 	conn.Close()
 	countGoRoutines()
 	fmt.Println("Client closing connection")
 }
 
-func clientSender(conn net.Conn, wg *sync.WaitGroup) {
+func clientSender(ctx context.Context, wg *sync.WaitGroup, conn net.Conn) {
 	defer wg.Done()
 
 	for {
-		reader := bufio.NewReader(os.Stdin)
-		txt, err := reader.ReadString('\n')
-		if err != nil {
-			fmt.Println("Connection issue.. exiting")
+		select {
+		case <-ctx.Done():
+			fmt.Println("Received exit signal")
 			return
-		}
 
-		if len(strings.TrimSpace(txt)) > 0 {
-			fmt.Fprintf(conn, txt+"\n")
-		}
+		default:
+			reader := bufio.NewReader(os.Stdin)
+			txt, err := reader.ReadString('\n')
+			if err != nil {
+				fmt.Println("Connection issue.. exiting")
+				return
+			}
 
-		if strings.TrimSpace(string(txt)) == "STOP" {
-			fmt.Println("Client exiting...")
-			return
+			if len(strings.TrimSpace(txt)) > 0 {
+				fmt.Fprintf(conn, txt+"\n")
+			}
+
+			if strings.TrimSpace(string(txt)) == "STOP" {
+				fmt.Println("Client exiting...")
+				return
+			}
 		}
 	}
 }
 
-func clientReceiver(conn net.Conn, wg *sync.WaitGroup) {
+func clientReceiver(ctx context.Context, wg *sync.WaitGroup, conn net.Conn) {
 	defer wg.Done()
 	for {
-		message, err := bufio.NewReader(conn).ReadString('\n')
-		if err != nil {
-			fmt.Println("Connection closed with server.. exiting")
+		select {
+		case <-ctx.Done():
+			fmt.Println("Received exit signal")
 			return
-		}
 
-		fmt.Print(">>>: ", message)
-		countGoRoutines()
+		default:
+			message, err := bufio.NewReader(conn).ReadString('\n')
+			if err != nil {
+				fmt.Println("Connection closed with server.. exiting")
+				return
+			}
 
-		if strings.TrimSpace(string(message)) == "STOP" {
-			fmt.Println("Exiting... Server closed connection")
-			return
+			fmt.Print(">>>: ", message)
+			countGoRoutines()
+
+			if strings.TrimSpace(string(message)) == "STOP" {
+				fmt.Println("Exiting... Server closed connection")
+				return
+			}
 		}
 	}
 }

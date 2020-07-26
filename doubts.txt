@@ -1,0 +1,16 @@
+1. What is the difference between passing WaitGroup by Address vs by Reference
+eg: 
+- go reader(&waitGroup, ctx, channel)
+- go serverReceiver(conn, wg)
+
+2. GoLang "context" library.
+https://golang.org/pkg/context/
+https://blog.golang.org/context
+
+3. GoLang standard libraries:
+https://golang.org/pkg/
+
+4. Debugging:
+https://golang.org/doc/gdb
+
+5. Worker Pool Pattern
